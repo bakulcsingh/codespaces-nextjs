@@ -1,70 +1,177 @@
-import { useCallback, useEffect, useState } from 'react'
-import Button from '../components/Button'
-import ClickCount from '../components/ClickCount'
-import styles from '../styles/home.module.css'
-
-function throwError() {
-  console.log(
-    // The function body() is not defined
-    document.body()
-  )
-}
+import { useState } from 'react'
+import {
+  Container,
+  Typography,
+  Box,
+  TextField,
+  Button,
+  Card,
+  CardContent,
+  MenuItem,
+  Stack,
+  Chip,
+  IconButton,
+  Paper
+} from '@mui/material'
+import {
+  AttachMoney,
+  Category,
+  EventNote,
+  CheckCircle,
+  Cancel
+} from '@mui/icons-material'
 
 function Home() {
-  const [count, setCount] = useState(0)
-  const increment = useCallback(() => {
-    setCount((v) => v + 1)
-  }, [setCount])
+  const categories = [
+    'Utilities',
+    'Credit Card',
+    'Rent/Mortgage',
+    'Insurance',
+    'Phone/Internet',
+    'Other'
+  ]
 
-  useEffect(() => {
-    const r = setInterval(() => {
-      increment()
-    }, 1000)
+  const [bills, setBills] = useState([])
+  const [newBill, setNewBill] = useState({
+    name: '',
+    amount: '',
+    dueDate: '',
+    category: '',
+    isPaid: false,
+    datePaid: null
+  })
 
-    return () => {
-      clearInterval(r)
-    }
-  }, [increment])
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    setBills([...bills, {
+      ...newBill,
+      id: Date.now()
+    }])
+    setNewBill({ name: '', amount: '', dueDate: '', category: '', isPaid: false, datePaid: null })
+  }
+
+  const togglePaidStatus = (billId) => {
+    setBills(bills.map(bill => 
+      bill.id === billId ? {
+        ...bill,
+        isPaid: !bill.isPaid,
+        datePaid: !bill.isPaid ? new Date().toISOString().split('T')[0] : null
+      } : bill
+    ))
+  }
+
+  const sortedBills = [...bills].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+  const totalUnpaid = bills.filter(b => !b.isPaid).reduce((sum, b) => sum + Number(b.amount), 0)
 
   return (
-    <main className={styles.main}>
-      <h1>Fast Refresh Demo</h1>
-      <p>
-        Fast Refresh is a Next.js feature that gives you instantaneous feedback
-        on edits made to your React components, without ever losing component
-        state.
-      </p>
-      <hr className={styles.hr} />
-      <div>
-        <p>
-          Auto incrementing value. The counter won't reset after edits or if
-          there are errors.
-        </p>
-        <p>Current value: {count}</p>
-      </div>
-      <hr className={styles.hr} />
-      <div>
-        <p>Component with state.</p>
-        <ClickCount />
-      </div>
-      <hr className={styles.hr} />
-      <div>
-        <p>
-          The button below will throw 2 errors. You'll see the error overlay to
-          let you know about the errors but it won't break the page or reset
-          your state.
-        </p>
-        <Button
-          onClick={(e) => {
-            setTimeout(() => document.parentNode(), 0)
-            throwError()
-          }}
-        >
-          Throw an Error
-        </Button>
-      </div>
-      <hr className={styles.hr} />
-    </main>
+    <Container maxWidth="md">
+      <Box sx={{ my: 4 }}>
+        <Typography variant="h3" component="h1" gutterBottom>
+          Bill Payment Tracker
+        </Typography>
+
+        <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+          <form onSubmit={handleSubmit}>
+            <Stack spacing={3}>
+              <TextField
+                label="Bill Name"
+                value={newBill.name}
+                onChange={(e) => setNewBill({...newBill, name: e.target.value})}
+                required
+                fullWidth
+              />
+              <TextField
+                select
+                label="Category"
+                value={newBill.category}
+                onChange={(e) => setNewBill({...newBill, category: e.target.value})}
+                required
+                fullWidth
+              >
+                <MenuItem value="">Select Category</MenuItem>
+                {categories.map(cat => (
+                  <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                type="number"
+                label="Amount"
+                value={newBill.amount}
+                onChange={(e) => setNewBill({...newBill, amount: e.target.value})}
+                required
+                fullWidth
+                InputProps={{
+                  startAdornment: <AttachMoney />
+                }}
+              />
+              <TextField
+                type="date"
+                label="Due Date"
+                value={newBill.dueDate}
+                onChange={(e) => setNewBill({...newBill, dueDate: e.target.value})}
+                required
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+              />
+              <Button
+                type="submit"
+                variant="contained"
+                size="large"
+                startIcon={<EventNote />}
+              >
+                Add Bill
+              </Button>
+            </Stack>
+          </form>
+        </Paper>
+
+        <Paper elevation={3} sx={{ p: 3, mb: 4, bgcolor: 'primary.light', color: 'primary.contrastText' }}>
+          <Typography variant="h5">
+            Total Unpaid: ${totalUnpaid.toFixed(2)}
+          </Typography>
+        </Paper>
+
+        <Stack spacing={2}>
+          {sortedBills.map(bill => (
+            <Card key={bill.id} sx={{ bgcolor: bill.isPaid ? 'success.light' : 'background.paper' }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Box>
+                    <Typography variant="h6">{bill.name}</Typography>
+                    <Chip
+                      icon={<Category />}
+                      label={bill.category}
+                      size="small"
+                      sx={{ mt: 1 }}
+                    />
+                  </Box>
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="h6" color="primary">
+                      ${Number(bill.amount).toFixed(2)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Due: {new Date(bill.dueDate).toLocaleDateString()}
+                    </Typography>
+                    {bill.datePaid && (
+                      <Typography variant="body2" color="success.main">
+                        Paid: {new Date(bill.datePaid).toLocaleDateString()}
+                      </Typography>
+                    )}
+                  </Box>
+                  <IconButton
+                    onClick={() => togglePaidStatus(bill.id)}
+                    color={bill.isPaid ? "success" : "primary"}
+                    sx={{ ml: 2 }}
+                  >
+                    {bill.isPaid ? <CheckCircle /> : <Cancel />}
+                  </IconButton>
+                </Box>
+              </CardContent>
+            </Card>
+          ))}
+        </Stack>
+      </Box>
+    </Container>
   )
 }
 
