@@ -70,6 +70,22 @@ function Home() {
   const [isRecurring, setIsRecurring] = useState(false);
   const [editingBill, setEditingBill] = useState(null);
 
+  // Load bills from MongoDB
+  useEffect(() => {
+    const loadBills = async () => {
+      try {
+        const response = await fetch('/api/bills');
+        if (response.ok) {
+          const data = await response.json();
+          setBills(data);
+        }
+      } catch (error) {
+        console.error('Failed to load bills:', error);
+      }
+    };
+    loadBills();
+  }, []);
+
   useEffect(() => {
     const today = dayjs();
     bills.forEach((bill) => {
@@ -116,45 +132,47 @@ function Home() {
     });
   }, [bills]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editingBill) {
-      setBills(
-        bills.map((bill) =>
-          bill.id === editingBill
-            ? {
-                ...newBill,
-                id: bill.id,
-                dueDate: dayjs(newBill.dueDate).format("YYYY-MM-DD"),
-                recurring: isRecurring ? newBill.recurring : "",
-              }
-            : bill
-        )
-      );
-      setEditingBill(null);
-    } else {
-      setBills([
-        ...bills,
-        {
-          ...newBill,
-          id: Date.now(),
-          dueDate: dayjs(newBill.dueDate).format("YYYY-MM-DD"),
-          lastGenerated: dayjs().format("YYYY-MM-DD"),
-          recurring: isRecurring ? newBill.recurring : "",
-        },
-      ]);
+    const billData = {
+      ...newBill,
+      id: editingBill || Date.now(),
+      dueDate: dayjs(newBill.dueDate).format("YYYY-MM-DD"),
+      recurring: isRecurring ? newBill.recurring : "",
+      lastGenerated: dayjs().format("YYYY-MM-DD"),
+    };
+
+    try {
+      const response = await fetch('/api/bills', {
+        method: editingBill ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(billData),
+      });
+
+      if (response.ok) {
+        if (editingBill) {
+          setBills(bills.map(bill => 
+            bill.id === editingBill ? billData : bill
+          ));
+        } else {
+          setBills([...bills, billData]);
+        }
+        setEditingBill(null);
+        setNewBill({
+          name: "",
+          amount: "",
+          dueDate: "",
+          category: "",
+          isPaid: false,
+          datePaid: null,
+          recurring: "",
+          lastGenerated: null,
+        });
+        setIsRecurring(false);
+      }
+    } catch (error) {
+      console.error('Failed to save bill:', error);
     }
-    setNewBill({
-      name: "",
-      amount: "",
-      dueDate: "",
-      category: "",
-      isPaid: false,
-      datePaid: null,
-      recurring: "",
-      lastGenerated: null,
-    });
-    setIsRecurring(false);
   };
 
   const handleEdit = (bill) => {
@@ -181,20 +199,27 @@ function Home() {
     setIsRecurring(false);
   };
 
-  const togglePaidStatus = (billId) => {
-    setBills(
-      bills.map((bill) =>
-        bill.id === billId
-          ? {
-              ...bill,
-              isPaid: !bill.isPaid,
-              datePaid: !bill.isPaid
-                ? new Date().toISOString().split("T")[0]
-                : null,
-            }
-          : bill
-      )
-    );
+  const togglePaidStatus = async (billId) => {
+    const bill = bills.find(b => b.id === billId);
+    const updatedBill = {
+      ...bill,
+      isPaid: !bill.isPaid,
+      datePaid: !bill.isPaid ? new Date().toISOString().split('T')[0] : null,
+    };
+
+    try {
+      const response = await fetch('/api/bills', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedBill),
+      });
+
+      if (response.ok) {
+        setBills(bills.map(b => b.id === billId ? updatedBill : b));
+      }
+    } catch (error) {
+      console.error('Failed to update bill:', error);
+    }
   };
 
   const sortedBills = [...bills].sort(
