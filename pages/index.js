@@ -26,6 +26,9 @@ import {
   EventNote,
   CheckCircle,
   Cancel,
+  Edit,
+  Save,
+  Cancel as CancelIcon,
 } from "@mui/icons-material";
 
 const categories = [
@@ -44,6 +47,13 @@ const recurringOptions = [
   { value: "yearly", label: "Yearly" },
 ];
 
+const mockSession = {
+  user: {
+    email: "local@development.com",
+    name: "Local Developer",
+  },
+};
+
 function Home() {
   const { data: session, status } = useSession();
   const [bills, setBills] = useState([]);
@@ -58,6 +68,23 @@ function Home() {
     lastGenerated: null,
   });
   const [isRecurring, setIsRecurring] = useState(false);
+  const [editingBill, setEditingBill] = useState(null);
+
+  // Load bills from MongoDB
+  useEffect(() => {
+    const loadBills = async () => {
+      try {
+        const response = await fetch('/api/bills');
+        if (response.ok) {
+          const data = await response.json();
+          setBills(data);
+        }
+      } catch (error) {
+        console.error('Failed to load bills:', error);
+      }
+    };
+    loadBills();
+  }, []);
 
   useEffect(() => {
     const today = dayjs();
@@ -105,18 +132,60 @@ function Home() {
     });
   }, [bills]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setBills([
-      ...bills,
-      {
-        ...newBill,
-        id: Date.now(),
-        dueDate: dayjs(newBill.dueDate).format("YYYY-MM-DD"),
-        lastGenerated: dayjs().format("YYYY-MM-DD"),
-        recurring: isRecurring ? newBill.recurring : "",
-      },
-    ]);
+    const billData = {
+      ...newBill,
+      id: editingBill || Date.now(),
+      dueDate: dayjs(newBill.dueDate).format("YYYY-MM-DD"),
+      recurring: isRecurring ? newBill.recurring : "",
+      lastGenerated: dayjs().format("YYYY-MM-DD"),
+    };
+
+    try {
+      const response = await fetch('/api/bills', {
+        method: editingBill ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(billData),
+      });
+
+      if (response.ok) {
+        if (editingBill) {
+          setBills(bills.map(bill => 
+            bill.id === editingBill ? billData : bill
+          ));
+        } else {
+          setBills([...bills, billData]);
+        }
+        setEditingBill(null);
+        setNewBill({
+          name: "",
+          amount: "",
+          dueDate: "",
+          category: "",
+          isPaid: false,
+          datePaid: null,
+          recurring: "",
+          lastGenerated: null,
+        });
+        setIsRecurring(false);
+      }
+    } catch (error) {
+      console.error('Failed to save bill:', error);
+    }
+  };
+
+  const handleEdit = (bill) => {
+    setEditingBill(bill.id);
+    setNewBill({
+      ...bill,
+      dueDate: dayjs(bill.dueDate),
+    });
+    setIsRecurring(!!bill.recurring);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingBill(null);
     setNewBill({
       name: "",
       amount: "",
@@ -130,20 +199,27 @@ function Home() {
     setIsRecurring(false);
   };
 
-  const togglePaidStatus = (billId) => {
-    setBills(
-      bills.map((bill) =>
-        bill.id === billId
-          ? {
-              ...bill,
-              isPaid: !bill.isPaid,
-              datePaid: !bill.isPaid
-                ? new Date().toISOString().split("T")[0]
-                : null,
-            }
-          : bill
-      )
-    );
+  const togglePaidStatus = async (billId) => {
+    const bill = bills.find(b => b.id === billId);
+    const updatedBill = {
+      ...bill,
+      isPaid: !bill.isPaid,
+      datePaid: !bill.isPaid ? new Date().toISOString().split('T')[0] : null,
+    };
+
+    try {
+      const response = await fetch('/api/bills', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedBill),
+      });
+
+      if (response.ok) {
+        setBills(bills.map(b => b.id === billId ? updatedBill : b));
+      }
+    } catch (error) {
+      console.error('Failed to update bill:', error);
+    }
   };
 
   const sortedBills = [...bills].sort(
@@ -157,7 +233,10 @@ function Home() {
     return <Typography>Loading...</Typography>;
   }
 
-  if (!session) {
+  const skipAuth = process.env.NEXT_PUBLIC_SKIP_AUTH === "true";
+  const activeSession = skipAuth ? mockSession : session;
+
+  if (!activeSession) {
     return (
       <Container maxWidth="sm">
         <Box sx={{ my: 4, textAlign: "center" }}>
@@ -189,9 +268,13 @@ function Home() {
             </Typography>
             <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
               <Typography variant="body2">
-                Signed in as {session.user.email}
+                Signed in as {activeSession.user.email}
               </Typography>
-              <Button variant="outlined" onClick={() => signOut()}>
+              <Button 
+                variant="outlined" 
+                onClick={() => skipAuth ? null : signOut()}
+                disabled={skipAuth}
+              >
                 Sign Out
               </Button>
             </Box>
@@ -327,53 +410,177 @@ function Home() {
                 }}
               >
                 <CardContent>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <Box>
-                      <Typography variant="h6">
-                        {bill.name}
-                        {bill.recurring && (
-                          <Chip
-                            label={bill.recurring}
-                            size="small"
-                            color="secondary"
-                            sx={{ ml: 1 }}
-                          />
+                  {editingBill === bill.id ? (
+                    <form onSubmit={handleSubmit}>
+                      <Stack spacing={2}>
+                        <TextField
+                          label="Bill Name"
+                          value={newBill.name}
+                          onChange={(e) =>
+                            setNewBill({ ...newBill, name: e.target.value })
+                          }
+                          required
+                          fullWidth
+                        />
+                        <TextField
+                          select
+                          label="Category"
+                          value={newBill.category}
+                          onChange={(e) =>
+                            setNewBill({ ...newBill, category: e.target.value })
+                          }
+                          required
+                          fullWidth
+                        >
+                          {categories.map((cat) => (
+                            <MenuItem key={cat} value={cat}>
+                              {cat}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                        <TextField
+                          type="number"
+                          label="Amount"
+                          value={newBill.amount}
+                          onChange={(e) =>
+                            setNewBill({ ...newBill, amount: e.target.value })
+                          }
+                          required
+                          fullWidth
+                        />
+                        <DatePicker
+                          label="Due Date"
+                          value={newBill.dueDate}
+                          onChange={(date) =>
+                            setNewBill({
+                              ...newBill,
+                              dueDate: date,
+                            })
+                          }
+                          slotProps={{
+                            textField: {
+                              required: true,
+                              fullWidth: true,
+                            },
+                          }}
+                        />
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={isRecurring}
+                              onChange={(e) => {
+                                setIsRecurring(e.target.checked);
+                                if (!e.target.checked) {
+                                  setNewBill((prev) => ({
+                                    ...prev,
+                                    recurring: "",
+                                  }));
+                                }
+                              }}
+                            />
+                          }
+                          label="Recurring Bill"
+                        />
+                        {isRecurring && (
+                          <TextField
+                            select
+                            label="Recurring Frequency"
+                            value={newBill.recurring}
+                            onChange={(e) =>
+                              setNewBill({
+                                ...newBill,
+                                recurring: e.target.value,
+                              })
+                            }
+                            required={isRecurring}
+                            fullWidth
+                          >
+                            {recurringOptions
+                              .filter((opt) => opt.value !== "")
+                              .map((option) => (
+                                <MenuItem
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </MenuItem>
+                              ))}
+                          </TextField>
                         )}
-                      </Typography>
-                      <Chip
-                        icon={<Category />}
-                        label={bill.category}
-                        size="small"
-                        sx={{ mt: 1 }}
-                      />
-                    </Box>
-                    <Box sx={{ textAlign: "right" }}>
-                      <Typography variant="h6" color="primary">
-                        ${Number(bill.amount).toFixed(2)}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Due: {new Date(bill.dueDate).toLocaleDateString()}
-                      </Typography>
-                      {bill.datePaid && (
-                        <Typography variant="body2" color="success.main">
-                          Paid: {new Date(bill.datePaid).toLocaleDateString()}
-                        </Typography>
-                      )}
-                    </Box>
-                    <IconButton
-                      onClick={() => togglePaidStatus(bill.id)}
-                      color={bill.isPaid ? "success" : "primary"}
-                      sx={{ ml: 2 }}
+                        <Box sx={{ display: "flex", gap: 1 }}>
+                          <Button
+                            type="submit"
+                            variant="contained"
+                            startIcon={<Save />}
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            onClick={handleCancelEdit}
+                            variant="outlined"
+                            startIcon={<CancelIcon />}
+                          >
+                            Cancel
+                          </Button>
+                        </Box>
+                      </Stack>
+                    </form>
+                  ) : (
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
                     >
-                      {bill.isPaid ? <CheckCircle /> : <Cancel />}
-                    </IconButton>
-                  </Box>
+                      <Box>
+                        <Typography variant="h6">
+                          {bill.name}
+                          {bill.recurring && (
+                            <Chip
+                              label={bill.recurring}
+                              size="small"
+                              color="secondary"
+                              sx={{ ml: 1 }}
+                            />
+                          )}
+                        </Typography>
+                        <Chip
+                          icon={<Category />}
+                          label={bill.category}
+                          size="small"
+                          sx={{ mt: 1 }}
+                        />
+                      </Box>
+                      <Box sx={{ textAlign: "right" }}>
+                        <Typography variant="h6" color="primary">
+                          ${Number(bill.amount).toFixed(2)}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Due: {new Date(bill.dueDate).toLocaleDateString()}
+                        </Typography>
+                        {bill.datePaid && (
+                          <Typography variant="body2" color="success.main">
+                            Paid: {new Date(bill.datePaid).toLocaleDateString()}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Box sx={{ display: "flex", gap: 1 }}>
+                        <IconButton
+                          onClick={() => handleEdit(bill)}
+                          color="primary"
+                        >
+                          <Edit />
+                        </IconButton>
+                        <IconButton
+                          onClick={() => togglePaidStatus(bill.id)}
+                          color={bill.isPaid ? "success" : "primary"}
+                        >
+                          {bill.isPaid ? <CheckCircle /> : <Cancel />}
+                        </IconButton>
+                      </Box>
+                    </Box>
+                  )}
                 </CardContent>
               </Card>
             ))}
