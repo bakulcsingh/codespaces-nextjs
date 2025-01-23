@@ -136,7 +136,7 @@ function Home() {
     e.preventDefault();
     const billData = {
       ...newBill,
-      id: editingBill || Date.now(),
+      id: editingBill ? Number(editingBill) : Date.now(), // ensure consistent id format
       dueDate: dayjs(newBill.dueDate).format("YYYY-MM-DD"),
       recurring: isRecurring ? newBill.recurring : "",
       lastGenerated: dayjs().format("YYYY-MM-DD"),
@@ -149,27 +149,31 @@ function Home() {
         body: JSON.stringify(billData),
       });
 
-      if (response.ok) {
-        if (editingBill) {
-          setBills(bills.map(bill => 
-            bill.id === editingBill ? billData : bill
-          ));
-        } else {
-          setBills([...bills, billData]);
-        }
-        setEditingBill(null);
-        setNewBill({
-          name: "",
-          amount: "",
-          dueDate: "",
-          category: "",
-          isPaid: false,
-          datePaid: null,
-          recurring: "",
-          lastGenerated: null,
-        });
-        setIsRecurring(false);
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('API Error:', errorData);
+        return;
       }
+
+      if (editingBill) {
+        setBills(bills.map(bill => 
+          bill.id === editingBill ? billData : bill
+        ));
+      } else {
+        setBills([...bills, billData]);
+      }
+      setEditingBill(null);
+      setNewBill({
+        name: "",
+        amount: "",
+        dueDate: "",
+        category: "",
+        isPaid: false,
+        datePaid: null,
+        recurring: "",
+        lastGenerated: null,
+      });
+      setIsRecurring(false);
     } catch (error) {
       console.error('Failed to save bill:', error);
     }
