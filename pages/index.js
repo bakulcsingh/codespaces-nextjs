@@ -136,11 +136,13 @@ function Home() {
     e.preventDefault();
     const billData = {
       ...newBill,
-      id: editingBill ? Number(editingBill) : Date.now(), // ensure consistent id format
+      id: editingBill ? Number(editingBill) : Date.now(),
+      billId: editingBill ? Number(editingBill) : Date.now(), // Add billId
       dueDate: dayjs(newBill.dueDate).format("YYYY-MM-DD"),
       recurring: isRecurring ? newBill.recurring : "",
       lastGenerated: dayjs().format("YYYY-MM-DD"),
     };
+    delete billData._id; // Ensure we don't send _id
 
     try {
       const response = await fetch('/api/bills', {

@@ -33,24 +33,27 @@ export default async function handler(req, res) {
             ...req.body,
             userEmail,
             createdAt: new Date(),
+            billId: req.body.id, // Store the client-side ID separately
           };
+          delete newBill._id; // Ensure we don't try to set _id
           await db.collection("bills").insertOne(newBill);
           res.json(newBill);
           break;
 
         case "PUT":
-          const { id, ...updateData } = req.body;
-          console.log("Updating bill:", { id, updateData, userEmail });
+          const { id, _id, ...updateData } = req.body;
+          console.log("Updating bill:", { billId: id, updateData, userEmail });
 
           const result = await db.collection("bills").updateOne(
             {
-              id: Number(id) || id, // handle both string and number ids
+              billId: Number(id) || id, // Use billId for querying
               userEmail,
             },
             {
               $set: {
                 ...updateData,
                 updatedAt: new Date(),
+                billId: Number(id) || id, // Ensure billId stays consistent
               },
             }
           );
@@ -65,7 +68,7 @@ export default async function handler(req, res) {
         case "DELETE":
           const { id: billId } = req.query;
           const deleteResult = await db.collection("bills").deleteOne({
-            id: Number(billId) || billId,
+            billId: Number(billId) || billId, // Use billId for querying
             userEmail,
           });
 
